@@ -9,7 +9,6 @@ help:
 	@echo	"		make test										CI: Run tests"
 	@echo	"		make check									CI: Lint the code"
 	@echo	"		make format									CI: Format the code"
-	@echo	"		make type										CI: Check typing"
 	@echo	"		make dockerbuild						Build the docker image"
 	@echo	"		make dockerrun							Run the docker image"
 	@echo	"		make composebuild						Build with compose.yml"
@@ -42,3 +41,11 @@ dockerbuild:
 
 dockerbuild-dev:
 	docker build -t scheduler-service -f .devcontainer/Dockerfile .
+
+dockerrun:
+	docker run scheduler-service
+
+allci:
+	$(MAKE) check
+	$(MAKE) format
+	$(MAKE) test
