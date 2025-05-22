@@ -1,7 +1,7 @@
 [project]
-name = "recurring"
+name = "Scheduler-Service"
 version = "0.1.0"
-description = "Add your description here"
+description = "An event driven scheduler service with a single responsibility on scheduling."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
