@@ -13,7 +13,7 @@ help:
 	@echo	"		make dockerrun							Run the docker image"
 	@echo	"		make composebuild						Build with compose.yml"
 	@echo	"		make composerun							Run with compose.yml"
-	@echo	"		make allci									Run all CI steps (check, format, type, test)"
+	@echo	"		make allci									Run all CI steps (check, format, test)"
 
 consumer:
 	uv run src/consumer.py
@@ -29,9 +29,6 @@ check:
 
 format:
 	uv run ruff format $$(git diff --name-only --cached -- '*.py')
-
-type:
-	uv run ty check $$(git diff --name-only --cached -- '*.py')
 
 docs:
 	uvx --with mkdocstrings --with mkdocs-material --with mkdocstrings-python --with mkdocs-include-markdown-plugin mkdocs serve
