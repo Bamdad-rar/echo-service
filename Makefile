@@ -2,18 +2,18 @@
 
 help:
 	@echo "Usage:"
-	@echo "		make consumer								Run a consumer service locally"
-	@echo "		make producer								Run a producer service locally"
-	@echo	"		make dockerbuild						Build docker image"
-	@echo	"		make docs										Run local documentation server"
-	@echo	"		make test										CI: Run tests"
-	@echo	"		make check									CI: Lint the code"
-	@echo	"		make format									CI: Format the code"
-	@echo	"		make dockerbuild						Build the docker image"
-	@echo	"		make dockerrun							Run the docker image"
-	@echo	"		make composebuild						Build with compose.yml"
-	@echo	"		make composerun							Run with compose.yml"
-	@echo	"		make allci									Run all CI steps (check, format, test)"
+	@echo "	make consumer             Run a consumer service locally"
+	@echo "	make producer             Run a producer service locally"
+	@echo "	make dockerbuild          Build docker image"
+	@echo "	make docs                 Run local documentation server"
+	@echo "	make test                 CI: Run tests"
+	@echo "	make check                CI: Lint the code"
+	@echo "	make format               CI: Format the code"
+	@echo "	make dockerbuild          Build the docker image"
+	@echo "	make dockerrun            Run the docker image"
+	@echo "	make composebuild         Build with compose.yml"
+	@echo "	make composerun           Run with compose.yml"
+	@echo "	make allci                Run all CI steps (check, format, test)"
 
 consumer:
 	uv run src/consumer.py
