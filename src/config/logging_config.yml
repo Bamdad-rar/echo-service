@@ -1,0 +1,14 @@
+version: 1
+disable_existing_loggers: False
+formatters:
+  json:
+    (): __main__.JSONFormatter  # Use the custom formatter defined earlier
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: DEBUG
+    formatter: json
+    stream: ext://sys.stdout
+root:
+  level: DEBUG
+  handlers: [console]

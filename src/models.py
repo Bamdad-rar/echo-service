@@ -17,5 +17,3 @@ scheduled_events_table = Table(
     Column("event_method", String(255)),
     Column("event_payload", JSON()),
 )
-
-
