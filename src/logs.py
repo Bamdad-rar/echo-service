@@ -1,4 +1,4 @@
-import logging
+import logging.config
 from datetime import datetime, UTC
 import json
 
@@ -27,8 +27,17 @@ def setup_logging():
                 "level": "DEBUG",
                 "formatter": "json",
                 "stream": "ext://sys.stdout",
+            },
+            'app': {
+                'level': 'DEBUG',
+                'class': 'logging.handlers.RotatingFileHandler',
+                'formatter': 'json',
+                'filename': 'app.log',
+                'maxBytes': 1024 * 1024 * 10,
+                'backupCount': 10,
             }
         },
         "root": {"level": "DEBUG", "handlers": ["console"]},
     }
     logging.config.dictConfig(config)
+    logging.getLogger("pika").setLevel(logging.WARNING)

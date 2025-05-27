@@ -1,4 +1,4 @@
-.PHONY: help
+.PHONY: help docs
 
 help:
 	@echo "Usage:"
