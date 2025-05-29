@@ -1,5 +1,4 @@
 import pika
-import sqlalchemy
 import json
 import time
 from pika.channel import Channel
@@ -10,10 +9,8 @@ from pydantic import ValidationError
 from messages import SchedulingEvent
 from errors import UnrecoverableConnectionError
 from config import settings
-from database import engine as db
-from database import scheduled_events_table
 from sqlalchemy import insert
-
+from message_brokers.base import MessageBroker
 
 
 log = logging.getLogger(__name__)
@@ -26,7 +23,7 @@ RABBITMQ_SCHEDULER_ROUTING_KEY = settings.rabbitmq_scheduler_routing_key
 RABBITMQ_SCHEDULER_QUEUE_NAME = settings.rabbitmq_scheduler_queue_name
 
 
-class BlockingConsumer:
+class RabbitMQ(MessageBroker):
     def __init__(
             self, amqp_username: str, amqp_password: str, amqp_host: str, amqp_port: int, amqp_heartbeat: int = 600
     ):
@@ -76,11 +73,6 @@ class BlockingConsumer:
             queue=RABBITMQ_SCHEDULER_QUEUE_NAME,
             routing_key=RABBITMQ_SCHEDULER_ROUTING_KEY
         )
-        self.channel.basic_consume(
-        queue=RABBITMQ_SCHEDULER_QUEUE_NAME,
-        on_message_callback=self.consume_callback,
-        auto_ack=False
-        )
         log.info("Channel setup completed")
             
 
@@ -91,6 +83,13 @@ class BlockingConsumer:
                 self.connection.close()
         except Exception as e:
             log.error(f"Error closing connection: {e}")
+
+    def register_callback(self, callback):
+        self.channel.basic_consume(
+                queue=RABBITMQ_SCHEDULER_QUEUE_NAME,
+                on_message_callback=callback,
+                auto_ack=False
+                )
 
     def consume_callback(self, channel: Channel, method_frame, header_frame, body):
         log.info(f"{body=}")
@@ -118,7 +117,7 @@ class BlockingConsumer:
             log.warning(f'Unexpected error: {e=}')
             # TODO put in dead letter queue
         finally:
-            self.channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+            channel.basic_ack(delivery_tag=method_frame.delivery_tag)
 
     def run(self):
         while True:

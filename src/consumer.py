@@ -1,5 +1,5 @@
 from logs import setup_logging
-from consumers.blocking_consumer import BlockingConsumer
+from message_brokers.rabbitmq import RabbitMQ
 from config import settings
 
 
@@ -12,11 +12,11 @@ class TaskRouting:
     UPDATE = "task.schedule.update"
     REMINDER = "task.reminder.trigger"
 
-consumer = BlockingConsumer(
+msg_broker = RabbitMQ(
     settings.rabbitmq_username,
     settings.rabbitmq_password,
     settings.rabbitmq_host,
     settings.rabbitmq_port
 )
-consumer.run()
+msg_broker.run()
 

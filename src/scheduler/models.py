@@ -7,7 +7,7 @@ class OrderPackageActionData(BaseModel):
     recurring_package_id: int
     user_id: int
 
-class SchedulingEvent(BaseModel):
+class Task(BaseModel):
     event_id: int
     event_timestamp: int
     action: Literal['order_package']

@@ -10,7 +10,7 @@ class Scheduler:
         self.db = db
         self.table = table
 
-    def add_event(self, event: SchedulingEvent):
+    def add_task(self, event: SchedulingEvent):
         log.info(f'adding event {event}')
         stmt = insert(self.table).values(
                 event_id=event.event_id,
@@ -28,19 +28,18 @@ class Scheduler:
             conn.execute(stmt)
             conn.commit()
 
-    def update_event(self, event):
+    def update_task(self, event):
         log.info(f'updating event')
         ...
 
-    def pause_event(self, event):
+    def pause_task(self, event):
         log.info('pausing event')
         ...
 
-    def cancel_event(self, event):
-
+    def cancel_task(self, event):
         log.info('canceling event')
         ...
 
-    def get_top_due_events(self, top_n: int):
+    def get_due_tasks(self, top_n: int):
         log.info(f'getting top {top_n} events')
         ...
