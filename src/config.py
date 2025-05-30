@@ -6,6 +6,8 @@ __all__ = ["settings"]
 
 class Settings(BaseSettings):
     """Settings are read from environment"""
+
+    # RABBITMQ
     rabbitmq_username: str = "admin"
     rabbitmq_password: str = "1234"
     rabbitmq_host: str = "localhost"
@@ -19,8 +21,13 @@ class Settings(BaseSettings):
     rabbitmq_retry_on_connection_failure: bool = True
     rabbitmq_prefetch_count: int = 1
 
+    # DATABASE
+    DB_URL: str = "sqlite+pysqlite:///:memory:"
+    DB_URL_ECHO: bool = True
+
+
 try:
     settings = Settings()
 except ValidationError as e:
-    print(f'Invalid Settings: {e}')
+    print(f"Invalid Settings: {e}")
     raise

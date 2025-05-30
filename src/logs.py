@@ -28,14 +28,14 @@ def setup_logging():
                 "formatter": "json",
                 "stream": "ext://sys.stdout",
             },
-            'app': {
-                'level': 'DEBUG',
-                'class': 'logging.handlers.RotatingFileHandler',
-                'formatter': 'json',
-                'filename': 'app.log',
-                'maxBytes': 1024 * 1024 * 10,
-                'backupCount': 10,
-            }
+            "app": {
+                "level": "DEBUG",
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "json",
+                "filename": "app.log",
+                "maxBytes": 1024 * 1024 * 10,
+                "backupCount": 10,
+            },
         },
         "root": {"level": "DEBUG", "handlers": ["console"]},
     }

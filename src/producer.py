@@ -16,8 +16,6 @@ RETRY_ON_CONNECTION_FAILURE = True
 PREFETCH_COUNT = 1
 
 
-
-
 DB_URL = "sqlite:///:memory:"
 DB_CONNECTION_POOL_SIZE = 20
 
@@ -26,4 +24,4 @@ engine = create_engine(DB_URL, pool_size=DB_CONNECTION_POOL_SIZE)
 scheduled_events_metadata.create_all(engine, checkfirst=True)
 
 if __name__ == "__main__":
-   ... 
+    ...

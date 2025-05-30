@@ -1,6 +1,6 @@
-from datetime import datetime
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Literal
+
 
 class RecurringPackage(BaseModel):
     action: Literal["order", "cancel", "update"]
@@ -8,16 +8,13 @@ class RecurringPackage(BaseModel):
     recurring_package_id: int
     user_id: int
 
-class Task(BaseModel):
-    id: Optional[int] = None # only we're newly creating a task, otherwise it has an id
+class TaskEvent(BaseModel):
     event_id: int
-    event_timestamp: float
-    start: float
+    event_timestamp: int
+    start: int
     repeat_for: int | None
     repeated_for: int = 0
     unlimited: bool
     period: Literal["seconds", "minutes", "hours", "days", "weeks", "months", "jmonths"]
+    # extension can happen here
     data: RecurringPackage
-    created_at: datetime
-    updated_at: datetime
-    next_run_time: float

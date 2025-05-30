@@ -1,40 +1,88 @@
-from sqlalchemy import Boolean, Table, Column, Integer, String, JSON, TIMESTAMP, MetaData, DateTime
-from sqlalchemy import create_engine
-import logging
-
-log = logging.getLogger(__name__)
+from models import Task
+from sqlalchemy import Engine, Table, insert, select, update, delete
 
 
-DB_URL = "sqlite+pysqlite:///:memory:"
-DB_URL_ECHO = True
+class TaskRepo:
+    def __init__(self, engine: Engine, table: Table):
+        self._engine = engine
+        self._table = table
 
-metadata = MetaData()
+    def add(self, task: Task):
+        stmt = insert(self._table).values(
+            event_id=task.event_id,
+            event_timestamp=task.event_timestamp,
+            action=task.action,
+            start=task.start,
+            repeat_for=task.repeat_for,
+            repeated_for=task.repeated_for,
+            unlimited=task.unlimited,
+            period=task.period,
+            action_data=task.action_data,
+            next_run_time=task.next_run_time,
+        )
+        with self._engine.connect() as conn:
+            conn.execute(stmt)
+            conn.commit()
 
-__all__ = ["scheduled_events_table", "engine"]
+    def get(self, task_id: str):
+        stmt = select(self._table).where(self._table.c.id == task_id)
+        with self._engine.connect() as conn:
+            rows = conn.execute(stmt)
+            return rows
 
-scheduled_events_table = Table(
-    "scheduled_events",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("event_id", Integer, nullable=False),
-    Column("event_timestamp", Integer), # timestamp of when the event was created on producer side
-    Column("action", String),
-    Column("start", TIMESTAMP),
-    Column("repeat_for", Integer, nullable=True),
-    Column("repeated_for", Integer, default=0),
-    Column("unlimited", Boolean),
-    Column("period", String),
-    Column("action_data", JSON()),
-    Column("created_at", DateTime),
-    Column("updated_at", DateTime),
-    Column("next_run_time", TIMESTAMP),
-)
+    def update(self, task):
+        """Update an existing task using its ID"""
+        stmt = (
+            update(self._table)
+            .where(self._table.c.id == task.id)
+            .values(
+                event_id=task.event_id,
+                event_timestamp=task.event_timestamp,
+                action=task.action,
+                start=task.start,
+                repeat_for=task.repeat_for,
+                repeated_for=task.repeated_for,
+                unlimited=task.unlimited,
+                period=task.period,
+                action_data=task.action_data,
+                next_run_time=task.next_run_time,
+            )
+        )
+        with self._engine.connect() as conn:
+            conn.execute(stmt)
+            conn.commit()
 
-try:
-    engine = create_engine(DB_URL, echo=DB_URL_ECHO)
-    metadata.create_all(engine)
-except Exception as e:
-    log.error(f'Something went wrong while connectin and creating tables on database, {e}')
-    raise
-    
+
+    def delete(self, task_id):
+        """Delete a task by its ID"""
+        stmt = delete(self._table).where(self._table.c.id == task_id)
+        with self._engine.connect() as conn:
+            conn.execute(stmt)
+            conn.commit()
+
+    def bulk_add(self, tasks: list[Task]):
+        """Bulk insert multiple tasks in a single transaction"""
+        data = [{
+            'event_id': t.event_id,
+            'event_timestamp': t.event_timestamp,
+            'action': t.action,
+            'start': t.start,
+            'repeat_for': t.repeat_for,
+            'repeated_for': t.repeated_for,
+            'unlimited': t.unlimited,
+            'period': t.period,
+            'action_data': t.action_data,
+            'next_run_time': t.next_run_time,
+        } for t in tasks]
+
+        with self._engine.begin() as conn:
+            conn.execute(insert(self._table), data)
+
+    def bulk_get(self, task_ids: list[int]):
+        """Fetch multiple tasks by their IDs"""
+        stmt = select(self._table).where(self._table.c.id.in_(task_ids))
+        with self._engine.connect() as conn:
+            result = conn.execute(stmt)
+            return [Task(**row._asdict()) for row in result]
+
 

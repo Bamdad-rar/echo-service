@@ -10,6 +10,9 @@ dependencies = [
     "psycopg[binary]>=3.2.9",
     "pydantic>=2.11.4",
     "pydantic-settings>=2.9.1",
+    "pytest>=8.3.5",
     "ruff>=0.11.11",
     "sqlalchemy>=2.0.41",
 ]
+[tool.pytest.ini_options]
+pythonpath=["src"]
