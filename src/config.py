@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     rabbitmq_prefetch_count: int = 1
 
     # DATABASE
-    DB_URL: str = "sqlite+pysqlite:///:memory:"
+    DB_URL: str = "sqlite+pysqlite:///foo.db"
     DB_URL_ECHO: bool = True
 
 

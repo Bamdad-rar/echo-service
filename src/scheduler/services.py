@@ -1,20 +1,23 @@
 from adapters.message_broker import MessageBroker, message_broker
-from models import Task
-from dto import TaskEvent
-from repository import TaskRepo
+from scheduler.models import Task
+from scheduler.dto import TaskEvent
+from scheduler.repository import TaskRepo
 from pika.channel import Channel
 from functools import partial
 import logging
 import json
 from pydantic import ValidationError
-from strategies import get_calculation_strategy
+from scheduler.strategies import get_calculation_strategy
 from datetime import datetime
 
 
 log = logging.getLogger(__name__)
 
+
 class TaskScheduler:
-    def _consume_callback(self, channel: Channel, method_frame, header_frame, body, repo: TaskRepo):
+    def _consume_callback(
+        self, channel: Channel, method_frame, header_frame, body, repo: TaskRepo
+    ):
         try:
             # validation
             data = json.loads(body)
@@ -22,17 +25,17 @@ class TaskScheduler:
 
             # calculate next run
             next_run_time = get_calculation_strategy(task_event.period).calculate(
-                    task_event.start,
-                    task_event.repeat_for,
-                    task_event.repeated_for,
-                    task_event.unlimited
+                task_event.start,
+                task_event.repeat_for,
+                task_event.repeated_for,
+                task_event.unlimited,
             )
 
             task = Task(
                 created_at=datetime.now(),
-                updated_at=datetime.now(), 
+                updated_at=datetime.now(),
                 next_run_time=next_run_time,
-                **task_event
+                **task_event,
             )
 
             # save to database
@@ -47,8 +50,9 @@ class TaskScheduler:
         finally:
             channel.basic_ack(delivery_tag=method_frame.delivery_tag)
 
-    def recreate_tasks(self, ):
-        ...
+    def recreate_tasks(
+        self,
+    ): ...
 
     def consume_events(self, message_broker: MessageBroker, repo: TaskRepo):
         consume_callback = partial(self._consume_callback, repo=repo)
@@ -59,4 +63,3 @@ class TaskScheduler:
         while True:
             # select update lock
             ...
-

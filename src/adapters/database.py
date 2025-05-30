@@ -1,5 +1,13 @@
 from sqlalchemy import (
-    Boolean, Table, Column, Integer, String, JSON, TIMESTAMP, MetaData, DateTime,
+    Boolean,
+    Table,
+    Column,
+    Integer,
+    String,
+    JSON,
+    TIMESTAMP,
+    MetaData,
+    DateTime,
 )
 from sqlalchemy import create_engine
 import logging

@@ -1,4 +1,4 @@
-from models import Task
+from .models import Task
 from sqlalchemy import Engine, Table, insert, select, update, delete
 
 
@@ -52,7 +52,6 @@ class TaskRepo:
             conn.execute(stmt)
             conn.commit()
 
-
     def delete(self, task_id):
         """Delete a task by its ID"""
         stmt = delete(self._table).where(self._table.c.id == task_id)
@@ -62,18 +61,21 @@ class TaskRepo:
 
     def bulk_add(self, tasks: list[Task]):
         """Bulk insert multiple tasks in a single transaction"""
-        data = [{
-            'event_id': t.event_id,
-            'event_timestamp': t.event_timestamp,
-            'action': t.action,
-            'start': t.start,
-            'repeat_for': t.repeat_for,
-            'repeated_for': t.repeated_for,
-            'unlimited': t.unlimited,
-            'period': t.period,
-            'action_data': t.action_data,
-            'next_run_time': t.next_run_time,
-        } for t in tasks]
+        data = [
+            {
+                "event_id": t.event_id,
+                "event_timestamp": t.event_timestamp,
+                "action": t.action,
+                "start": t.start,
+                "repeat_for": t.repeat_for,
+                "repeated_for": t.repeated_for,
+                "unlimited": t.unlimited,
+                "period": t.period,
+                "action_data": t.action_data,
+                "next_run_time": t.next_run_time,
+            }
+            for t in tasks
+        ]
 
         with self._engine.begin() as conn:
             conn.execute(insert(self._table), data)
@@ -84,5 +86,3 @@ class TaskRepo:
         with self._engine.connect() as conn:
             result = conn.execute(stmt)
             return [Task(**row._asdict()) for row in result]
-
-

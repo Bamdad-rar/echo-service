@@ -8,6 +8,7 @@ class RecurringPackage(BaseModel):
     recurring_package_id: int
     user_id: int
 
+
 class TaskEvent(BaseModel):
     event_id: int
     event_timestamp: int

@@ -2,14 +2,16 @@ from datetime import datetime
 from pydantic import BaseModel
 from typing import Literal, Optional
 
+
 class RecurringPackage(BaseModel):
     action: Literal["order", "cancel", "update"]
     user_recurring_package_id: int
     recurring_package_id: int
     user_id: int
 
+
 class Task(BaseModel):
-    id: Optional[int] = None # only we're newly creating a task, otherwise it has an id
+    id: Optional[int] = None  # only we're newly creating a task, otherwise it has an id
     event_id: int
     event_timestamp: float
     start: float

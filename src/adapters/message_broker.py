@@ -7,7 +7,7 @@ import logging
 from errors import UnrecoverableConnectionError
 from config import settings
 
-__all__ = ['message_broker', 'MessageBroker']
+__all__ = ["message_broker", "MessageBroker"]
 
 log = logging.getLogger(__name__)
 
@@ -124,9 +124,11 @@ class RabbitMQ(MessageBroker):
             except Exception as e:
                 log.info(f"Stopping Consumer, an unexpected error occurred [{e=}]")
 
+
 class Kafka(MessageBroker):
     # in case later on we want to add kafka as our message broker
     ...
+
 
 message_broker = RabbitMQ(
     settings.rabbitmq_username,
