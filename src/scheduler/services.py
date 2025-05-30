@@ -7,6 +7,9 @@ from functools import partial
 import logging
 import json
 from pydantic import ValidationError
+from strategies import get_calculation_strategy
+from datetime import datetime
+
 
 log = logging.getLogger(__name__)
 
@@ -18,7 +21,20 @@ class TaskScheduler:
             task_event = TaskEvent(**data)
 
             # calculate next run
-            task = Task()
+            next_run_time = get_calculation_strategy(task_event.period).calculate(
+                    task_event.start,
+                    task_event.repeat_for,
+                    task_event.repeated_for,
+                    task_event.unlimited
+            )
+
+            task = Task(
+                created_at=datetime.now(),
+                updated_at=datetime.now(), 
+                next_run_time=next_run_time,
+                **task_event
+            )
+
             # save to database
             repo.add(task)
 
