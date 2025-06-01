@@ -1,17 +1,15 @@
 import pika
-from uuid import uuid4
 import json
+from config import settings
+from time import time
 
-RABBITMQ_HOST = "localhost"
-RABBITMQ_PORT = 5672
-RABBITMQ_EXCHANGE_TYPE = "topic"
-RABBITMQ_INBOUND_QUEUE_NAME = "scheduler-main-queue"
-RABBITMQ_OUTBOUND_QUEUE_NAME = "reminder-main-queue"
-RABBITMQ_EXCHANGE = "task.scheduling.exchange"
-RABBITMQ_INBOUND_ROUTING_KEY = "task.schedule.*"
-RABBITMQ_OUTBOUND_ROUTING_KEY = "task.reminder.*"
-RETRY_ON_CONNECTION_FAILURE = True
-PREFETCH_COUNT = 1
+RABBITMQ_HOST = settings.rabbitmq_host
+RABBITMQ_PORT = settings.rabbitmq_port
+RABBITMQ_EXCHANGE = settings.rabbitmq_exchange
+RABBITMQ_EXCHANGE_TYPE = settings.rabbitmq_exchange_type
+RABBITMQ_INBOUND_QUEUE_NAME = settings.rabbitmq_scheduler_queue_name
+RABBITMQ_INBOUND_ROUTING_KEY = settings.rabbitmq_scheduler_routing_key
+
 
 connection = pika.BlockingConnection(
     pika.ConnectionParameters(
@@ -36,17 +34,17 @@ channel.queue_bind(
 for i in range(100):
     data = {
         "event_id": i,
-        "event_timestamp": i,
-        "action": "order_package",
-        "start": 10,
+        "event_timestamp": time(),
+        "start": time(),
         "repeat_for": 10,
         "repeated_for": 0,
         "unlimited": False,
         "period": "seconds",
-        "action_data": {
-            "user_recurring_package_id": i,
-            "recurring_package_id": i,
-            "user_id": i,
+        "data": {
+            "user_recurring_package_id": i+1,
+            "action": "order",
+            "recurring_package_id": i+1,
+            "user_id": i+1,
         },
     }
     channel.basic_publish(
@@ -55,3 +53,7 @@ for i in range(100):
         body=json.dumps(data),
         properties=pika.BasicProperties(content_type="application/json"),
     )
+
+
+connection.close()
+print('closed rabbit connection, exiting...')

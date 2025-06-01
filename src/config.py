@@ -23,7 +23,10 @@ class Settings(BaseSettings):
 
     # DATABASE
     DB_URL: str = "sqlite+pysqlite:///foo.db"
-    DB_URL_ECHO: bool = True
+    DB_ECHO: bool = True
+
+    POLL_DB_URL: str = "sqlite+pysqlite:///foo.db"
+    POLL_DB_ECHO: bool = True
 
 
 try:

@@ -86,3 +86,39 @@ class TaskRepo:
         with self._engine.connect() as conn:
             result = conn.execute(stmt)
             return [Task(**row._asdict()) for row in result]
+
+
+
+
+class RecurringPackagePollingRepo:
+    def __init__(self, engine, user_recurring_package_table, recurring_package_table) -> None:
+        self._engine = engine
+        self._user_recurring_package_table = user_recurring_package_table
+        self._recurring_package_table = recurring_package_table
+
+
+    def get_tasks(self):
+        stmt = select(self._table)
+        with self._engine.connect() as conn:
+            rows = conn.execute(stmt)
+            return rows
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

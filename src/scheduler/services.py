@@ -1,7 +1,7 @@
 from adapters.message_broker import MessageBroker, message_broker
 from scheduler.models import Task
 from scheduler.dto import TaskEvent
-from scheduler.repository import TaskRepo
+from scheduler.repository import TaskRepo, UserRecurringPackageRepo
 from pika.channel import Channel
 from functools import partial
 import logging
@@ -50,9 +50,11 @@ class TaskScheduler:
         finally:
             channel.basic_ack(delivery_tag=method_frame.delivery_tag)
 
-    def recreate_tasks(
-        self,
-    ): ...
+    def recreate_recurring_package_tasks(self, repo: UserRecurringPackageRepo):
+        # get all tasks from a starting db, and sync them with the service db.
+        rows = repo.get_all()
+        for row in rows:
+            task = 
 
     def consume_events(self, message_broker: MessageBroker, repo: TaskRepo):
         consume_callback = partial(self._consume_callback, repo=repo)

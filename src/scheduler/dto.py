@@ -2,6 +2,12 @@ from pydantic import BaseModel
 from typing import Literal
 
 
+class TaskRouting:
+    CREATE = "task.schedule.create"
+    UPDATE = "task.schedule.update"
+    REMINDER = "task.reminder.trigger"
+
+
 class RecurringPackage(BaseModel):
     action: Literal["order", "cancel", "update"]
     user_recurring_package_id: int
