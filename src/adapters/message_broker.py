@@ -1,23 +1,15 @@
 import pika
 import time
-from pika.channel import Channel
+from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import AMQPChannelError, AMQPConnectionError
 import logging
 
-from errors import UnrecoverableConnectionError
+from errors import UnrecoverableConnectionError, MaxRetriesReached
 from config import settings
 
 __all__ = ["message_broker", "MessageBroker"]
 
 log = logging.getLogger(__name__)
-
-PREFETCH_COUNT = settings.rabbitmq_prefetch_count
-RETRY_ON_CONNECTION_FAILURE = settings.rabbitmq_retry_on_connection_failure
-RABBITMQ_EXCHANGE_TYPE = settings.rabbitmq_exchange_type
-RABBITMQ_EXCHANGE = settings.rabbitmq_exchange
-RABBITMQ_SCHEDULER_ROUTING_KEY = settings.rabbitmq_scheduler_routing_key
-RABBITMQ_SCHEDULER_QUEUE_NAME = settings.rabbitmq_scheduler_queue_name
-
 
 class MessageBroker:
     def run(self) -> None:
@@ -32,70 +24,82 @@ class RabbitMQ(MessageBroker):
     definition of responsibility:
         what does this code protect me from having to know? - Kevlin Henney
     responsibility: Establishing, Maintaining a connection to rabbitmq, and registring a callback function to it
+
+    prefetch count : 
+    controls how many unacknowledged messages a consumer can receive from the broker before acknowledging one.
+    It essentially sets a limit on the number of messages a consumer is allowed to hold in its local buffer.        
+    
+    heartbeat:
+    a periodic signal sent between the server and client to ensure a connection is alive and to detect network issues or unresponsive peers.
+    useful for catching dead connections faster.
     """
 
-    def __init__(
-        self,
-        amqp_username: str,
-        amqp_password: str,
-        amqp_host: str,
-        amqp_port: int,
-        amqp_heartbeat: int = 600,
-    ):
-        self.connection = None
-        self.channel: Channel | None = None
-        self.connection_params = pika.ConnectionParameters(
-            heartbeat=amqp_heartbeat,
-            host=amqp_host,
-            port=amqp_port,
-            credentials=pika.PlainCredentials(amqp_username, amqp_password),
+    PREFETCH_COUNT = settings.rabbitmq_prefetch_count
+    RETRY_ON_CONNECTION_FAILURE = settings.rabbitmq_retry_on_connection_failure
+    RABBITMQ_EXCHANGE_TYPE = settings.rabbitmq_exchange_type
+    RABBITMQ_EXCHANGE = settings.rabbitmq_exchange
+    RABBITMQ_SCHEDULER_ROUTING_KEY = settings.rabbitmq_scheduler_routing_key
+    RABBITMQ_SCHEDULER_QUEUE_NAME = settings.rabbitmq_scheduler_queue_name
+
+    def __init__(self, username: str, password: str, host: str, port: int, heartbeat: int = 600):
+        self._credentials = pika.PlainCredentials(username, password)
+        self._connection_params = pika.ConnectionParameters(
+            heartbeat=heartbeat,
+            host=host,
+            port=port,
+            credentials=self._credentials
         )
-        self.prefetch_count = PREFETCH_COUNT
-        self.should_reconnect = RETRY_ON_CONNECTION_FAILURE
 
-    def get_connection(self):
-        if self.connection is None or self.connection.is_closed:
-            self._reconnect_with_backoff()
-        return self.connection
+        # reconnection configurations
+        self._reconnect_enabled = True
+        self._reconnect_backoff = True
+        self._reconnect_base_delay = 5 # seconds
+        self._reconnect_max_retries = 12
 
-    def _reconnect_with_backoff(self):
-        base_delay = 1
-        for attempts in range(5):
+        self._is_connected = False
+        self._connection: pika.BlockingConnection | None = None
+        self._channel: BlockingChannel | None = None
+
+    def connect(self):
+        for attempts in range(self._reconnect_max_retries):
             try:
-                self.connection = pika.BlockingConnection(
-                    parameters=self.connection_params
-                )
-                return
+                self._connection = pika.BlockingConnection(parameters=self._connection_params)
+                self._channel = self._connection.channel()
             except AMQPConnectionError as e:
-                log.warning(
-                    f"could not get connection to rabbitmq: {e}, retrying in {(base_delay + attempts) * 5}..."
-                )
-                time.sleep((base_delay + attempts) * 5)
-        raise UnrecoverableConnectionError()
-
-    def setup_channel(self):
-        self.channel = self.get_connection().channel()
-        self.channel.basic_qos(prefetch_count=PREFETCH_COUNT)
-
-        self.channel.exchange_declare(
-            exchange=RABBITMQ_EXCHANGE,
-            exchange_type=RABBITMQ_EXCHANGE_TYPE,
-        )
-        self.channel.queue_declare(queue=RABBITMQ_SCHEDULER_QUEUE_NAME, durable=True)
-        self.channel.queue_bind(
-            exchange=RABBITMQ_EXCHANGE,
-            queue=RABBITMQ_SCHEDULER_QUEUE_NAME,
-            routing_key=RABBITMQ_SCHEDULER_ROUTING_KEY,
-        )
-        log.info("Channel setup completed")
+                retry_delay = self._reconnect_base_delay * (attempts+1) if self._reconnect_backoff else self._reconnect_base_delay
+                log.warning(f"could not get connection to rabbitmq: {e}, retrying in {retry_delay}")
+                time.sleep(retry_delay)
+        else:
+            msg = f"Could not establish a connection with rabbitmq after {self._reconnect_max_retries} retries."
+            log.error(msg)
+            raise MaxRetriesReached(msg)
 
     def close_connection(self):
         """Safely close connection if it exists"""
         try:
-            if self.connection and self.connection.is_open:
-                self.connection.close()
+            if self._connection and self._connection.is_open:
+                self._connection.close()
         except Exception as e:
             log.error(f"Error closing connection: {e}")
+
+    def ensure_connection(self):
+        if not self._is_connected or self._connection is None or self._connection.is_closed:
+            self.connect()
+ 
+    def setup_consumer(self):
+        self.channel = self.connection.channel()
+        self.channel.basic_qos(prefetch_count=self.prefetch_count)
+        self.channel.exchange_declare(
+            exchange=self.RABBITMQ_EXCHANGE,
+            exchange_type=self.RABBITMQ_EXCHANGE_TYPE,
+        )
+        self.channel.queue_declare(queue=self.RABBITMQ_SCHEDULER_QUEUE_NAME, durable=True)
+        self.channel.queue_bind(
+            exchange=self.RABBITMQ_EXCHANGE,
+            queue=self.RABBITMQ_SCHEDULER_QUEUE_NAME,
+            routing_key=self.RABBITMQ_SCHEDULER_ROUTING_KEY,
+        )
+        log.info("Channel setup completed")
 
     def register_callback(self, callback):
         self.channel.basic_consume(
@@ -107,22 +111,22 @@ class RabbitMQ(MessageBroker):
     def run(self):
         while True:
             try:
-                self.get_connection()
-                self.setup_channel()
                 self.channel.start_consuming()
+            
+            except AMQPChannelError as e:
+                log.error(f"an error occurred on rabbit channel, {e}. retrying...")
+            
             except UnrecoverableConnectionError:
                 log.error("could not connect to rabbit, shutting down...")
                 self.close_connection()
                 break
-            except AMQPChannelError as e:
-                log.error(f"an error occurred on rabbit channel, {e}. retrying...")
             except KeyboardInterrupt as e:
                 log.info(f"Manually stopping consumer...")
                 self.close_connection()
                 # sys.stdout.flush()
                 break
             except Exception as e:
-                log.info(f"Stopping Consumer, an unexpected error occurred [{e=}]")
+                log.error(f"Stopping Consumer, an unexpected error occurred [{e=}]")
 
 
 class Kafka(MessageBroker):

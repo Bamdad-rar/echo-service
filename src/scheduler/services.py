@@ -54,7 +54,8 @@ class TaskScheduler:
         # get all tasks from a starting db, and sync them with the service db.
         rows = repo.get_all()
         for row in rows:
-            task = 
+            print(row)
+            # task = 
 
     def consume_events(self, message_broker: MessageBroker, repo: TaskRepo):
         consume_callback = partial(self._consume_callback, repo=repo)
