@@ -1,22 +1,40 @@
-import os
-import ast
-import subprocess
-import httpx
-import sys
-import json
+from flatten_codebase import flatten_codebase
 
+prompt = """
+### CONTEXT
+You are an expert technical writer building developer documentation for a production Python micro-service.  
+Audience: experienced Python developers new to the codebase.  
+Output format: valid Markdown files compatible with MkDocs & mkdocstrings (Material theme).  
+Code style: Google-style docstrings.
 
+### DELIVERABLE
+Return a **ZIP-like listing** of Markdown files whose content is fully written out, for example:
 
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', None)
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}" 
+docs/
+  index.md
+  architecture.md
+  flow.md
+  configuration.md
+  deployment.md
+  troubleshooting.md
+  reference.md  (contains only mkdocstrings directives)
 
-if GEMINI_API_KEY is None:
-    print("no gemini api key provided, cant create documents, exiting...")
-    sys.exit(1)
+For each file include the full Markdown text.  
+Inside `reference.md`, place one line per public package path in the form:
 
-def generate_staged_document():
-    data = {
-            "contents": [{"parts": [{"text": "git diff --cached here"}]}]
-            }
+    ::: scheduler_service.<module>[.<submodule>]
 
-    
+Do **not** repeat code in prose—link or reference it.  
+Keep each page concise (< 150 lines) and use the following style hints:
+
+* Use level-2 headings (`##`) for main sections, level-3 for subsections.
+* Prefer bullet lists over paragraphs where possible.
+* Wrap explanatory call-outs in admonitions (`!!! tip`, `!!! warning`, etc.).
+* For diagrams embed Mermaid fenced blocks when a sequence or component diagram clarifies flow.
+* Cross-link pages using relative links (e.g. `[Architecture](architecture.md)`).
+* Assume MkDocs extensions: `pymdownx.superfences`, `admonition`, `details`, `highlight`.
+
+### INPUT CODE BASE
+{code_source}
+"""
+filled_prompt = prompt.format(code_source=flatten_codebase("./src/")) 

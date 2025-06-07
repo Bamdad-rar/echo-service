@@ -1,60 +1,18 @@
-# `TaskScheduler` Class
+# Scheduler Service
 
-Handles task scheduling operations including event consumption, production, and recurring task synchronization.
+This service provides a resilient mechanism for scheduling recurring tasks based on events from a message broker. It consumes events, calculates the next execution time for a task, and persists it for a producer process to later pick up and execute.
 
-## Methods
+## Key Features
 
-### `_consume_callback(channel, method_frame, header_frame, body, repo)`
-Internal message processing handler for RabbitMQ.
+*   **Event-Driven**: Reacts to messages from a RabbitMQ topic exchange.
+*   **Persistent**: Stores scheduled tasks in a SQL database.
+*   **Resilient**: Includes connection retry logic for the message broker.
+*   **Configurable**: All key parameters are configurable via environment variables.
+*   **Pluggable Scheduling**: Uses a strategy pattern to calculate next run times for different periods (seconds, minutes, days, etc.).
 
-**Parameters**:
-- `channel`: Pika Channel object
-- `method_frame`: Delivery method frame
-- `header_frame`: Message properties
-- `body`: Raw message body (JSON string)
-- `repo`: `TaskRepo` instance for database operations
+## Getting Started
 
-**Workflow**:
-1. Parses and validates incoming JSON
-2. Calculates next execution time using period strategy
-3. Creates persistent `Task` object
-4. Saves task to database
-5. Handles errors gracefully:
-   - JSON decoding errors
-   - Pydantic validation errors
-   - Generic exceptions
-6. Sends message acknowledgement
+To understand how the service works, start with the [Architecture Overview](architecture.md). To see how data moves through the system, read about the [Data Flow](flow.md).
 
-### `recreate_recurring_package_tasks(repo)`
-Synchronizes recurring tasks from packages to database (implementation incomplete).
+For setup and execution, see the [Configuration](configuration.md) and [Deployment](deployment.md) guides.
 
-**Parameters**:
-- `repo`: `UserRecurringPackageRepo` instance
-
-**Intended Behavior**:
-- Fetches all recurring package records
-- Recreates corresponding tasks in scheduler database
-- (Currently prints rows for debugging)
-
-### `consume_events(message_broker, repo)`
-Starts event consumption from message broker.
-
-**Parameters**:
-- `message_broker`: Configured `MessageBroker` instance
-- `repo`: `TaskRepo` for task persistence
-
-**Behavior**:
-1. Registers partial callback with repository
-2. Starts message broker consumer loop
-
-### `produce_events(message_broker, repo)`
-Produces events for scheduled tasks (implementation placeholder).
-
-**Parameters**:
-- `message_broker`: Target message broker
-- `repo`: Task repository for retrieval
-
-**Designed Functionality**:
-- Should fetch due tasks using update lock
-- Send task events to broker
-- Handle task lifecycle updates

@@ -31,7 +31,7 @@ format:
 	uv run ruff format $$(git diff --name-only --cached -- '*.py')
 
 docs:
-	uvx --with mkdocstrings --with mkdocs-material --with mkdocstrings-python --with mkdocs-include-markdown-plugin mkdocs serve
+	uvx --with mkdocstrings --with mkdocs-material --with mkdocstrings-python --with mkdocs-include-markdown-plugin --with mkdocs-mermaid2-plugin mkdocs serve
 
 dockerbuild:
 	docker build -t scheduler-service .

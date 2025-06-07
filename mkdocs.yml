@@ -45,6 +45,11 @@ plugins:
       preserve_includer_indent: true
 nav:
   - Home: index.md
+  - Architecture: architecture.md
+  - Flow: flow.md
+  - Configuration: configuration.md
+  - Deployment: deployment.md
+  - Troubleshooting: troubleshooting.md
   - API Reference: reference.md
 markdown_extensions:
   - attr_list
@@ -57,7 +62,11 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg

@@ -3,6 +3,7 @@ from sqlalchemy import Engine, Table, insert, select, update, delete
 
 
 class TaskRepo:
+    """Some information about task repo"""
     def __init__(self, engine: Engine, table: Table):
         self._engine = engine
         self._table = table

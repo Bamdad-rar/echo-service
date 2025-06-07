@@ -1,0 +1,789 @@
+
+### CONTEXT
+You are an expert technical writer building developer documentation for a production Python micro-service.  
+Audience: experienced Python developers new to the codebase.  
+Output format: valid Markdown files compatible with MkDocs & mkdocstrings (Material theme).  
+Code style: Google-style docstrings.
+
+### DELIVERABLE
+Return a **ZIP-like listing** of Markdown files whose content is fully written out, for example:
+
+docs/
+  index.md
+  architecture.md
+  flow.md
+  configuration.md
+  deployment.md
+  troubleshooting.md
+  reference.md  (contains only mkdocstrings directives)
+
+For each file include the full Markdown text.  
+Inside `reference.md`, place one line per public package path in the form:
+
+    ::: scheduler_service.<module>[.<submodule>]
+
+Do **not** repeat code in prose—link or reference it.  
+Keep each page concise (< 150 lines) and use the following style hints:
+
+* Use level-2 headings (`##`) for main sections, level-3 for subsections.
+* Prefer bullet lists over paragraphs where possible.
+* Wrap explanatory call-outs in admonitions (`!!! tip`, `!!! warning`, etc.).
+* For diagrams embed Mermaid fenced blocks when a sequence or component diagram clarifies flow.
+* Cross-link pages using relative links (e.g. `[Architecture](architecture.md)`).
+* Assume MkDocs extensions: `pymdownx.superfences`, `admonition`, `details`, `highlight`.
+
+### INPUT CODE BASE
+## adapters/__init__.py
+
+## adapters/database.py
+from sqlalchemy import (
+    Boolean,
+    Table,
+    Column,
+    Integer,
+    String,
+    JSON,
+    TIMESTAMP,
+    MetaData,
+    DateTime,
+)
+from sqlalchemy import create_engine
+import logging
+from config import settings
+
+__all__ = ["task_table", "engine"]
+
+SCHEDULER_DB_URL = settings.DB_URL
+SCHEDULER_DB_URL_ECHO = settings.DB_ECHO
+
+POLL_DB_URL = settings.POLL_DB_URL
+POLL_DB_ECHO = settings.POLL_DB_ECHO
+
+log = logging.getLogger(__name__)
+
+metadata = MetaData()
+poll_metadata = MetaData()
+
+task_table = Table(
+    "tasks",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("event_id", Integer, nullable=False),
+    # timestamp of when the event was created on producer side
+    Column("event_timestamp", TIMESTAMP, nullable=False),
+    Column("start", TIMESTAMP, nullable=False),
+    Column("repeat_for", Integer, nullable=True),
+    Column("repeated_for", Integer, default=0),
+    Column("unlimited", Boolean),
+    Column("period", String),
+    Column("data", JSON()),
+    Column("created_at", DateTime),
+    Column("updated_at", DateTime),
+    Column("next_run_time", TIMESTAMP),
+)
+
+user_recurring_package_table = Table(
+    "user_recurring_package",
+    poll_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_recurring_package_id", Integer),
+    Column("user_id", Integer),
+    Column("recurring_package_id", Integer),
+    )
+
+recurring_package_table = Table(
+        "recurring_package",
+        poll_metadata,
+        Column("id",)
+        )
+
+try:
+    engine = create_engine(DB_URL, echo=DB_URL_ECHO)
+    metadata.create_all(engine)
+except Exception as e:
+    log.error(
+        f"Something went wrong while connectin and creating tables on database, {e}"
+    )
+    raise
+
+try:
+    poll_engine = create_engine(POLL_DB_URL, echo=POLL_DB_ECHO)
+except Exception as e:
+    log.error(
+        f"Something went wrong while connectin and creating tables on database, {e}"
+    )
+    raise
+
+## adapters/message_broker.py
+import pika
+import time
+from pika.adapters.blocking_connection import BlockingChannel
+from pika.exceptions import AMQPChannelError, AMQPConnectionError
+import logging
+
+from errors import UnrecoverableConnectionError, MaxRetriesReached
+from config import settings
+
+__all__ = ["message_broker", "MessageBroker"]
+
+log = logging.getLogger(__name__)
+
+class MessageBroker:
+    def run(self) -> None:
+        raise NotImplemented
+
+    def register_callback(self, callback) -> None:
+        raise NotImplemented
+
+
+class RabbitMQ(MessageBroker):
+    """
+    definition of responsibility:
+        what does this code protect me from having to know? - Kevlin Henney
+    responsibility: Establishing, Maintaining a connection to rabbitmq, and registring a callback function to it
+
+    prefetch count : 
+    controls how many unacknowledged messages a consumer can receive from the broker before acknowledging one.
+    It essentially sets a limit on the number of messages a consumer is allowed to hold in its local buffer.        
+    
+    heartbeat:
+    a periodic signal sent between the server and client to ensure a connection is alive and to detect network issues or unresponsive peers.
+    useful for catching dead connections faster.
+    """
+
+    PREFETCH_COUNT = settings.rabbitmq_prefetch_count
+    RETRY_ON_CONNECTION_FAILURE = settings.rabbitmq_retry_on_connection_failure
+    RABBITMQ_EXCHANGE_TYPE = settings.rabbitmq_exchange_type
+    RABBITMQ_EXCHANGE = settings.rabbitmq_exchange
+    RABBITMQ_SCHEDULER_ROUTING_KEY = settings.rabbitmq_scheduler_routing_key
+    RABBITMQ_SCHEDULER_QUEUE_NAME = settings.rabbitmq_scheduler_queue_name
+
+    def __init__(self, username: str, password: str, host: str, port: int, heartbeat: int = 600):
+        self._credentials = pika.PlainCredentials(username, password)
+        self._connection_params = pika.ConnectionParameters(
+            heartbeat=heartbeat,
+            host=host,
+            port=port,
+            credentials=self._credentials
+        )
+
+        # reconnection configurations
+        self._reconnect_enabled = True
+        self._reconnect_backoff = True
+        self._reconnect_base_delay = 5 # seconds
+        self._reconnect_max_retries = 12
+
+        self._is_connected = False
+        self._connection: pika.BlockingConnection | None = None
+        self._channel: BlockingChannel | None = None
+
+    def connect(self):
+        for attempts in range(self._reconnect_max_retries):
+            try:
+                self._connection = pika.BlockingConnection(parameters=self._connection_params)
+                self._channel = self._connection.channel()
+            except AMQPConnectionError as e:
+                retry_delay = self._reconnect_base_delay * (attempts+1) if self._reconnect_backoff else self._reconnect_base_delay
+                log.warning(f"could not get connection to rabbitmq: {e}, retrying in {retry_delay}")
+                time.sleep(retry_delay)
+        else:
+            msg = f"Could not establish a connection with rabbitmq after {self._reconnect_max_retries} retries."
+            log.error(msg)
+            raise MaxRetriesReached(msg)
+
+    def close_connection(self):
+        """Safely close connection if it exists"""
+        try:
+            if self._connection and self._connection.is_open:
+                self._connection.close()
+        except Exception as e:
+            log.error(f"Error closing connection: {e}")
+
+    def ensure_connection(self):
+        if not self._is_connected or self._connection is None or self._connection.is_closed:
+            self.connect()
+ 
+    def setup_consumer(self):
+        self.channel = self.connection.channel()
+        self.channel.basic_qos(prefetch_count=self.prefetch_count)
+        self.channel.exchange_declare(
+            exchange=self.RABBITMQ_EXCHANGE,
+            exchange_type=self.RABBITMQ_EXCHANGE_TYPE,
+        )
+        self.channel.queue_declare(queue=self.RABBITMQ_SCHEDULER_QUEUE_NAME, durable=True)
+        self.channel.queue_bind(
+            exchange=self.RABBITMQ_EXCHANGE,
+            queue=self.RABBITMQ_SCHEDULER_QUEUE_NAME,
+            routing_key=self.RABBITMQ_SCHEDULER_ROUTING_KEY,
+        )
+        log.info("Channel setup completed")
+
+    def register_callback(self, callback):
+        self.channel.basic_consume(
+            queue=RABBITMQ_SCHEDULER_QUEUE_NAME,
+            on_message_callback=callback,
+            auto_ack=False,
+        )
+
+    def run(self):
+        while True:
+            try:
+                self.channel.start_consuming()
+            
+            except AMQPChannelError as e:
+                log.error(f"an error occurred on rabbit channel, {e}. retrying...")
+            
+            except UnrecoverableConnectionError:
+                log.error("could not connect to rabbit, shutting down...")
+                self.close_connection()
+                break
+            except KeyboardInterrupt as e:
+                log.info(f"Manually stopping consumer...")
+                self.close_connection()
+                # sys.stdout.flush()
+                break
+            except Exception as e:
+                log.error(f"Stopping Consumer, an unexpected error occurred [{e=}]")
+
+
+class Kafka(MessageBroker):
+    # in case later on we want to add kafka as our message broker
+    ...
+
+
+message_broker = RabbitMQ(
+    settings.rabbitmq_username,
+    settings.rabbitmq_password,
+    settings.rabbitmq_host,
+    settings.rabbitmq_port,
+)
+
+## client.py
+import pika
+import json
+from config import settings
+from time import time
+
+RABBITMQ_HOST = settings.rabbitmq_host
+RABBITMQ_PORT = settings.rabbitmq_port
+RABBITMQ_EXCHANGE = settings.rabbitmq_exchange
+RABBITMQ_EXCHANGE_TYPE = settings.rabbitmq_exchange_type
+RABBITMQ_INBOUND_QUEUE_NAME = settings.rabbitmq_scheduler_queue_name
+RABBITMQ_INBOUND_ROUTING_KEY = settings.rabbitmq_scheduler_routing_key
+
+
+connection = pika.BlockingConnection(
+    pika.ConnectionParameters(
+        host=RABBITMQ_HOST,
+        port=RABBITMQ_PORT,
+        credentials=pika.PlainCredentials(username="admin", password="1234"),
+    )
+)
+
+channel = connection.channel()
+channel.exchange_declare(
+    exchange=RABBITMQ_EXCHANGE, exchange_type=RABBITMQ_EXCHANGE_TYPE
+)
+channel.queue_declare(queue=RABBITMQ_INBOUND_QUEUE_NAME, durable=True)
+channel.queue_bind(
+    exchange=RABBITMQ_EXCHANGE,
+    queue=RABBITMQ_INBOUND_QUEUE_NAME,
+    routing_key=RABBITMQ_INBOUND_ROUTING_KEY,
+)
+
+
+for i in range(100):
+    data = {
+        "event_id": i,
+        "event_timestamp": time(),
+        "start": time(),
+        "repeat_for": 10,
+        "repeated_for": 0,
+        "unlimited": False,
+        "period": "seconds",
+        "data": {
+            "user_recurring_package_id": i+1,
+            "action": "order",
+            "recurring_package_id": i+1,
+            "user_id": i+1,
+        },
+    }
+    channel.basic_publish(
+        exchange=RABBITMQ_EXCHANGE,
+        routing_key="task.schedule.create",
+        body=json.dumps(data),
+        properties=pika.BasicProperties(content_type="application/json"),
+    )
+
+
+connection.close()
+print('closed rabbit connection, exiting...')
+
+## config.py
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import ValidationError
+
+__all__ = ["settings"]
+
+
+class Settings(BaseSettings):
+    """Settings are read from environment"""
+
+    # RABBITMQ
+    rabbitmq_username: str = "admin"
+    rabbitmq_password: str = "1234"
+    rabbitmq_host: str = "localhost"
+    rabbitmq_port: int = 5672
+    rabbitmq_exchange_type: str = "topic"
+    rabbitmq_scheduler_queue_name: str = "scheduler-queue"
+    rabbitmq_reminder_queue_name: str = "reminder-queue"
+    rabbitmq_exchange: str = "task.scheduling.exchange"
+    rabbitmq_scheduler_routing_key: str = "task.schedule.*"
+    rabbitmq_reminder_routing_key: str = "task.reminder.*"
+    rabbitmq_retry_on_connection_failure: bool = True
+    rabbitmq_prefetch_count: int = 1
+
+    # DATABASE
+    DB_URL: str = "sqlite+pysqlite:///foo.db"
+    DB_ECHO: bool = True
+
+    POLL_DB_URL: str = "sqlite+pysqlite:///foo.db"
+    POLL_DB_ECHO: bool = True
+
+
+try:
+    settings = Settings()
+except ValidationError as e:
+    print(f"Invalid Settings: {e}")
+    raise
+
+## consumer.py
+from logs import setup_logging
+from scheduler.services import TaskScheduler
+from adapters.message_broker import message_broker
+from scheduler import task_repository, recurring_pacakge_repo
+
+setup_logging()
+
+message_broker.setup_channel()
+task_scheduler = TaskScheduler()
+# task_scheduler.recreate_recurring_package_tasks(recurring_pacakge_repo)
+task_scheduler.consume_events(message_broker, task_repository)
+
+## errors.py
+class UnrecoverableConnectionError(Exception):
+    """raised when we simply cannot connect to rabbit anymore (even after retry logic is fulfilled)"""
+    ...
+
+
+class MaxRetriesReached(Exception):
+    ...
+
+## exceptions/__init__.py
+
+## exceptions/errors.py
+
+## logs.py
+import logging.config
+from datetime import datetime, UTC
+import json
+
+
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": record.levelname,
+            "module": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_entry)
+
+
+def setup_logging():
+    config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {"json": {"()": JSONFormatter}},
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "level": "DEBUG",
+                "formatter": "json",
+                "stream": "ext://sys.stdout",
+            },
+            "app": {
+                "level": "DEBUG",
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "json",
+                "filename": "app.log",
+                "maxBytes": 1024 * 1024 * 10,
+                "backupCount": 10,
+            },
+        },
+        "root": {"level": "DEBUG", "handlers": ["console"]},
+    }
+    logging.config.dictConfig(config)
+    logging.getLogger("pika").setLevel(logging.WARNING)
+
+## producer.py
+from logs import setup_logging
+from scheduler.services import TaskScheduler
+from adapters.message_broker import message_broker
+from scheduler import task_repository
+
+setup_logging()
+
+message_broker.setup_channel()
+task_scheduler = TaskScheduler()
+task_scheduler.produce_events(message_broker, task_repository)
+
+## scheduler/__init__.py
+from .repository import TaskRepo, RecurringPackagePollingRepo
+from adapters.database import task_table, engine, poll_engine, recurring_package_table, user_recurring_package_table
+
+task_repository = TaskRepo(engine, task_table)
+recurring_pacakge_repo = RecurringPackagePollingRepo(poll_engine,user_recurring_package_table,recurring_package_table)
+
+## scheduler/dto.py
+from pydantic import BaseModel
+from typing import Literal
+
+
+class TaskRouting:
+    CREATE = "task.schedule.create"
+    UPDATE = "task.schedule.update"
+    REMINDER = "task.reminder.trigger"
+
+
+class RecurringPackage(BaseModel):
+    action: Literal["order", "cancel", "update"]
+    user_recurring_package_id: int
+    recurring_package_id: int
+    user_id: int
+
+
+class TaskEvent(BaseModel):
+    event_id: int
+    event_timestamp: int
+    start: int
+    repeat_for: int | None
+    repeated_for: int = 0
+    unlimited: bool
+    period: Literal["seconds", "minutes", "hours", "days", "weeks", "months", "jmonths"]
+    # extension can happen here
+    data: RecurringPackage
+
+## scheduler/models.py
+from datetime import datetime
+from pydantic import BaseModel
+from typing import Literal, Optional
+
+
+class RecurringPackage(BaseModel):
+    action: Literal["order", "cancel", "update"]
+    user_recurring_package_id: int
+    recurring_package_id: int
+    user_id: int
+
+
+class Task(BaseModel):
+    id: Optional[int] = None  # only we're newly creating a task, otherwise it has an id
+    event_id: int
+    event_timestamp: float
+    start: float
+    repeat_for: int | None
+    repeated_for: int = 0
+    unlimited: bool
+    period: Literal["seconds", "minutes", "hours", "days", "weeks", "months", "jmonths"]
+    data: RecurringPackage
+    created_at: datetime
+    updated_at: datetime
+    next_run_time: float
+
+## scheduler/repository.py
+from .models import Task
+from sqlalchemy import Engine, Table, insert, select, update, delete
+
+
+class TaskRepo:
+    def __init__(self, engine: Engine, table: Table):
+        self._engine = engine
+        self._table = table
+
+    def add(self, task: Task):
+        stmt = insert(self._table).values(
+            event_id=task.event_id,
+            event_timestamp=task.event_timestamp,
+            action=task.action,
+            start=task.start,
+            repeat_for=task.repeat_for,
+            repeated_for=task.repeated_for,
+            unlimited=task.unlimited,
+            period=task.period,
+            action_data=task.action_data,
+            next_run_time=task.next_run_time,
+        )
+        with self._engine.connect() as conn:
+            conn.execute(stmt)
+            conn.commit()
+
+    def get(self, task_id: str):
+        stmt = select(self._table).where(self._table.c.id == task_id)
+        with self._engine.connect() as conn:
+            rows = conn.execute(stmt)
+            return rows
+
+    def update(self, task):
+        """Update an existing task using its ID"""
+        stmt = (
+            update(self._table)
+            .where(self._table.c.id == task.id)
+            .values(
+                event_id=task.event_id,
+                event_timestamp=task.event_timestamp,
+                action=task.action,
+                start=task.start,
+                repeat_for=task.repeat_for,
+                repeated_for=task.repeated_for,
+                unlimited=task.unlimited,
+                period=task.period,
+                action_data=task.action_data,
+                next_run_time=task.next_run_time,
+            )
+        )
+        with self._engine.connect() as conn:
+            conn.execute(stmt)
+            conn.commit()
+
+    def delete(self, task_id):
+        """Delete a task by its ID"""
+        stmt = delete(self._table).where(self._table.c.id == task_id)
+        with self._engine.connect() as conn:
+            conn.execute(stmt)
+            conn.commit()
+
+    def bulk_add(self, tasks: list[Task]):
+        """Bulk insert multiple tasks in a single transaction"""
+        data = [
+            {
+                "event_id": t.event_id,
+                "event_timestamp": t.event_timestamp,
+                "action": t.action,
+                "start": t.start,
+                "repeat_for": t.repeat_for,
+                "repeated_for": t.repeated_for,
+                "unlimited": t.unlimited,
+                "period": t.period,
+                "action_data": t.action_data,
+                "next_run_time": t.next_run_time,
+            }
+            for t in tasks
+        ]
+
+        with self._engine.begin() as conn:
+            conn.execute(insert(self._table), data)
+
+    def bulk_get(self, task_ids: list[int]):
+        """Fetch multiple tasks by their IDs"""
+        stmt = select(self._table).where(self._table.c.id.in_(task_ids))
+        with self._engine.connect() as conn:
+            result = conn.execute(stmt)
+            return [Task(**row._asdict()) for row in result]
+
+
+
+
+class RecurringPackagePollingRepo:
+    def __init__(self, engine, user_recurring_package_table, recurring_package_table) -> None:
+        self._engine = engine
+        self._user_recurring_package_table = user_recurring_package_table
+        self._recurring_package_table = recurring_package_table
+
+
+    def get_tasks(self):
+        stmt = select(self._table)
+        with self._engine.connect() as conn:
+            rows = conn.execute(stmt)
+            return rows
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## scheduler/services.py
+from adapters.message_broker import MessageBroker, message_broker
+from scheduler.models import Task
+from scheduler.dto import TaskEvent
+from scheduler.repository import TaskRepo, UserRecurringPackageRepo
+from pika.channel import Channel
+from functools import partial
+import logging
+import json
+from pydantic import ValidationError
+from scheduler.strategies import get_calculation_strategy
+from datetime import datetime
+
+
+log = logging.getLogger(__name__)
+
+
+class TaskScheduler:
+    def _consume_callback(
+        self, channel: Channel, method_frame, header_frame, body, repo: TaskRepo
+    ):
+        try:
+            # validation
+            data = json.loads(body)
+            task_event = TaskEvent(**data)
+
+            # calculate next run
+            next_run_time = get_calculation_strategy(task_event.period).calculate(
+                task_event.start,
+                task_event.repeat_for,
+                task_event.repeated_for,
+                task_event.unlimited,
+            )
+
+            task = Task(
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                next_run_time=next_run_time,
+                **task_event,
+            )
+
+            # save to database
+            repo.add(task)
+
+        except json.JSONDecodeError as e:
+            log.warning(f"Could not decode the following data: {body}")
+        except ValidationError as e:
+            log.warning(f"Incompatible data received, {e}")
+        except Exception as e:
+            log.warning(f"Unexpected error: {e=}")
+        finally:
+            channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+
+    def recreate_recurring_package_tasks(self, repo: UserRecurringPackageRepo):
+        # get all tasks from a starting db, and sync them with the service db.
+        rows = repo.get_all()
+        for row in rows:
+            print(row)
+            # task = 
+
+    def consume_events(self, message_broker: MessageBroker, repo: TaskRepo):
+        consume_callback = partial(self._consume_callback, repo=repo)
+        message_broker.register_callback(consume_callback)
+        message_broker.run()
+
+    def produce_events(self, message_broker: MessageBroker, repo: TaskRepo):
+        while True:
+            # select update lock
+            ...
+
+## scheduler/strategies/__init__.py
+from .second import SecondStrategy
+from .minute import MinuteStrategy
+from .hour import HourStrategy
+from .day import DayStrategy
+from .week import WeekStrategy
+from typing import Literal
+
+
+STRATEGY_MAP = {
+    "second": SecondStrategy(),
+    "minute": MinuteStrategy(),
+    "hour": HourStrategy(),
+    "day": DayStrategy(),
+    "week": WeekStrategy(),
+}
+
+
+def get_calculation_strategy(
+    period: Literal["second", "minute", "hour", "day", "week", "month", "jmonth"],
+):
+    return STRATEGY_MAP[period]
+
+## scheduler/strategies/day.py
+class DayStrategy:
+    def calculate(
+        self, start_timestamp: int, repeat_for: int, repeated_for: int, unlimited: bool
+    ) -> int | None:
+        if not unlimited and repeated_for >= repeat_for:
+            return None
+        else:
+            return start_timestamp + repeated_for * (3600 * 24) + (3600 * 24)
+
+## scheduler/strategies/hour.py
+class HourStrategy:
+    def calculate(
+        self, start_timestamp: int, repeat_for: int, repeated_for: int, unlimited: bool
+    ) -> int | None:
+        if not unlimited and repeated_for >= repeat_for:
+            return None
+        else:
+            return start_timestamp + repeated_for * 3600 + 3600
+
+## scheduler/strategies/jmonth.py
+class JMonthStrategy:
+    def calculate(
+        self, start_timestamp: int, repeat_for: int, repeated_for: int, unlimited: bool
+    ) -> int | None:
+        raise NotImplemented
+
+## scheduler/strategies/minute.py
+class MinuteStrategy:
+    def calculate(
+        self, start_timestamp: int, repeat_for: int, repeated_for: int, unlimited: bool
+    ) -> int | None:
+        if not unlimited and repeated_for >= repeat_for:
+            return None
+        else:
+            return start_timestamp + repeated_for * 60 + 60
+
+## scheduler/strategies/month.py
+class MonthStrategy:
+    def calculate(
+        self, start_timestamp: int, repeat_for: int, repeated_for: int, unlimited: bool
+    ) -> int | None:
+        raise NotImplemented
+
+## scheduler/strategies/second.py
+class SecondStrategy:
+    def calculate(
+        self, start_timestamp: int, repeat_for: int, repeated_for: int, unlimited: bool
+    ) -> int | None:
+        if not unlimited and repeated_for >= repeat_for:
+            return None
+        else:
+            return start_timestamp + repeated_for + 1
+
+## scheduler/strategies/week.py
+class WeekStrategy:
+    def calculate(
+        self, start_timestamp: int, repeat_for: int, repeated_for: int, unlimited: bool
+    ) -> int | None:
+        if not unlimited and repeated_for >= repeat_for:
+            return None
+        else:
+            return start_timestamp + repeated_for * (3600 * 24 * 7) + (3600 * 24 * 7)
+
+
