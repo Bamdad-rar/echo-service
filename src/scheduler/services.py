@@ -14,8 +14,9 @@ from datetime import datetime
 log = logging.getLogger(__name__)
 
 
+
 class TaskScheduler:
-    def _consume_callback(
+    def message_broker_handler(
         self, channel: Channel, method_frame, header_frame, body, repo: TaskRepo
     ):
         try:
@@ -49,6 +50,35 @@ class TaskScheduler:
             log.warning(f"Unexpected error: {e=}")
         finally:
             channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+
+    def create_schedule(self,
+                        start_timestamp: int,
+                        repeat_for: int,
+                        repeated_for: int,
+                        unlimited: bool,
+                        period: str,
+                        data
+                        ):
+        """
+            class RecurringPackage(BaseModel):
+                action: Literal["order", "cancel", "update"]
+                user_recurring_package_id: int
+                recurring_package_id: int
+                user_id: int
+
+
+            class TaskEvent(BaseModel):
+                event_id: int
+                event_timestamp: int
+                start: int
+                repeat_for: int | None
+                repeated_for: int = 0
+                unlimited: bool
+                period: Literal["seconds", "minutes", "hours", "days", "weeks", "months", "jmonths"]
+                # extension can happen here
+                data: RecurringPackage
+        """
+        
 
     def recreate_recurring_package_tasks(self, repo: UserRecurringPackageRepo):
         # get all tasks from a starting db, and sync them with the service db.

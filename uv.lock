@@ -525,6 +525,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pytest" },
+    { name = "python-dateutil" },
     { name = "ruff" },
     { name = "sqlalchemy" },
 ]
@@ -538,6 +539,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11.4" },
     { name = "pydantic-settings", specifier = ">=2.9.1" },
     { name = "pytest", specifier = ">=8.3.5" },
+    { name = "python-dateutil", specifier = ">=2.9.0.post0" },
     { name = "ruff", specifier = ">=0.11.11" },
     { name = "sqlalchemy", specifier = ">=2.0.41" },
 ]
