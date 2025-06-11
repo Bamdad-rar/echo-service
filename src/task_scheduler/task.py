@@ -11,7 +11,7 @@ class Task:
     id: UUID
     callback_data: dict # what
     scheduler: Scheduler # when
-    # callback_dst: str # where
+    # callback_dst: str # where # TODO
     created_at: datetime = field(default=datetime.now().astimezone(timezone.utc))
     status: Status = "new"
     retry_count: int = 0
@@ -60,12 +60,12 @@ class Task:
         self.next_trigger = None
 
 
-    def fail(self, error: str, max_retries: int = 3, backoff_sec: int = 60):
+    def fail(self, max_retries: int = 3, backoff_sec: int = 60):
         self.retry_count += 1
-        if self.retry_count > max_retries:
+        if self.retry_count > max_retries or self.next_trigger is None:
             self.status = "failed"
             return
-        self.next_trigger = datetime.now(timezone.utc) + timedelta(seconds=backoff_sec * self.retry_count)
+        self.next_trigger = self.next_trigger + timedelta(seconds=backoff_sec * self.retry_count)
         self.status = "scheduled"
 
     def is_scheduled(self):
