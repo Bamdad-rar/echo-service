@@ -4,7 +4,7 @@ from uuid import UUID
 from task_scheduler.schedulers.base import Scheduler
 from datetime import datetime, timedelta, timezone
 
-Status = Literal['new','scheduled', 'paused', 'cancelled', 'finished', 'failed']
+Status = Literal['new','scheduled', 'paused', 'cancelled', 'done', 'failed']
 
 @dataclass 
 class Task:
@@ -13,12 +13,11 @@ class Task:
     scheduler: Scheduler # when
     # callback_dst: str # where
     created_at: datetime = field(default=datetime.now().astimezone(timezone.utc))
-    event_id: UUID | None = None # provided by other services
-    event_timestamp: int | None = None # provided by other services
     status: Status = "new"
     retry_count: int = 0
     next_trigger: datetime | None = None
     last_trigger: datetime | None = None
+    extra_info: dict | None = None # place for event_id, event_timestamp or any other info that helps with retrospection
 
     def __post_init__(self):
         if not isinstance(self.scheduler, Scheduler):
@@ -37,20 +36,12 @@ class Task:
 
     def schedule(self):
         self.next_trigger = self.scheduler.next_after(datetime.now(timezone.utc))
-        self.status = "finished" if self.next_trigger is None else "scheduled"
+        self.status = "done" if self.next_trigger is None else "scheduled"
 
     def delay(self, seconds: int):
         if self.next_trigger is None:
             raise ValueError("Cannot put delay on task with next_trigger time of None")
         self.next_trigger += timedelta(seconds=seconds)
-
-    def fail(self, error: str, max_retries: int = 3, backoff_sec: int = 60):
-        self.retry_count += 1
-        if self.retry_count > max_retries:
-            self.status = "failed"
-            return
-        self.next_trigger = datetime.now(timezone.utc) + timedelta(seconds=backoff_sec * self.retry_count)
-        self.status = "scheduled"
 
     def pause(self):
         if self.status == "scheduled":
@@ -67,6 +58,15 @@ class Task:
     def cancel(self):
         self.status = "cancelled"
         self.next_trigger = None
+
+
+    def fail(self, error: str, max_retries: int = 3, backoff_sec: int = 60):
+        self.retry_count += 1
+        if self.retry_count > max_retries:
+            self.status = "failed"
+            return
+        self.next_trigger = datetime.now(timezone.utc) + timedelta(seconds=backoff_sec * self.retry_count)
+        self.status = "scheduled"
 
     def is_scheduled(self):
         return self.status == "scheduled"
