@@ -1,26 +1,35 @@
-from scheduler.repository import TaskRepo
+from task_scheduler.repository.in_memory import InMemoryTaskRepository
+from task_scheduler.repository.database import DatabaseTaskRepository
+from task_scheduler.repository.base import TaskRepository
+from task_scheduler.schedulers.one_off import OneOff
+from task_scheduler.schedulers.recurring import Recurring
+from task_scheduler.schedulers.jalali import PersianRecurring
 from pika.channel import Channel
 import logging
 import json
 from pydantic import ValidationError
 from datetime import datetime
 from time import sleep
+from typing import Literal
+from uuid import uuid4
+from task_scheduler.task import Task
+
 
 log = logging.getLogger(__name__)
 
-def create_task(repo):
-    # create a task with the provided paramters
-    # schedule next trigger time
-    # add them to repo
-    ...
-
-
-def import_tasks(src_repo, dest_repo):
-    # read all tasks from the repository
-    # create Task Objects from them
-    # schedule their next trigger time
-    # add them to our repo.
-    ...
+def create_task(scheduler_type: Literal['one-off', 'rrule', 'jrrule'], scheduler_value, callback_data: dict, extra_info: dict | None, repo: TaskRepository, calendar: Literal['gregorian', 'jalali']="gregorian", timezone: str = "Asia/Tehran"):
+    match scheduler_type:
+        case 'one-off':
+            scheduler = OneOff(scheduler_value)
+        case 'rrule':
+            scheduler = Recurring(scheduler_value)
+        case 'jrrule':
+            scheduler = PersianRecurring(scheduler_value)
+        case _:
+            raise ValueError('No Scheudler found for scheduler value {scheduler_value}')
+    new_task = Task(uuid4(), callback_data, scheduler, extra_info=extra_info) 
+    new_task.schedule()
+    repo.add(new_task)
 
 
 def process_due_tasks(repo, callback):
@@ -44,6 +53,14 @@ def process_due_tasks(repo, callback):
     # schedule their next trigger time if they have any
     # call the callback function on the created messages
     # add the newly scheduled tasks to repo
+    ...
+
+
+def import_recurring_package_tasks(src_repo, dest_repo):
+    # read all tasks from the repository
+    # create Task Objects from them
+    # schedule their next trigger time
+    # add them to our repo.
     ...
 
 
