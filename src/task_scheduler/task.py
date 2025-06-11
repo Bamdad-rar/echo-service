@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Literal
-from uuid import UUID, uuid4
-from scheduler.domain.schedule import Scheduler
+from uuid import UUID
+from task_scheduler.schedulers.base import Scheduler
 from datetime import datetime, timedelta, timezone
 
 Status = Literal['new','scheduled', 'paused', 'cancelled', 'finished', 'failed']
