@@ -32,28 +32,18 @@ def create_task(scheduler_type: Literal['one-off', 'rrule', 'jrrule'], scheduler
     repo.add(new_task)
 
 
-def process_due_tasks(repo, callback):
-    while True:
-        tasks = repo.get_top_n_due_tasks()
-        messages = []
-        tasks_not_due = []
-        for task in tasks:
-            if task.is_due():
-                messages.append(task.to_message())
-                task.schedule()
-                repo.update(task)
-            else:
-                tasks_not_due.append(task)
-        if tasks_not_due:
-            # not trying to solve problems we dont have, at least not yet.
-            log.warning(f'some tasks were prematurely fetched {[str(t) for t in tasks_not_due]}')
-
-        sleep(0.1)
+def process_due_tasks(repo: TaskRepository, callback, limit:int = 10):
+    tasks = repo.get_due_tasks(limit)
+    messages = []
+    for task in tasks:
+        messages.append(task.to_message())
+        task.schedule()
+        repo.update(task)
+     
     # create message from due tasks, especially from their payload and where they should be sent, their event id and timestamp are important too
     # schedule their next trigger time if they have any
     # call the callback function on the created messages
     # add the newly scheduled tasks to repo
-    ...
 
 
 def import_recurring_package_tasks(src_repo, dest_repo):
