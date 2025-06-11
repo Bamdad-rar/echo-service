@@ -1,255 +1,225 @@
-from sqlalchemy import Engine, Table, insert, select, update, delete
+from sqlalchemy import Engine, Table, insert, select, update, delete, func
 from uuid import UUID
 from datetime import datetime, timezone
-
-class TaskRepository:
-    def add(self, task)-> None:
-        raise NotImplemented
-
-    def get(self, reference)-> None:
-        raise NotImplemented
-
-    def update(self, task)-> None:
-        raise NotImplemented
-
-    def get_due_tasks(self, limit):
-        raise NotImplemented
-    
-    def remove(self, reference)-> None:
-        raise NotImplemented
-
-    def bulk_add(self, tasks) -> None:
-        raise NotImplemented
-
-    def get_by_status(self, status):
-        raise NotImplemented
-
-    def count(self):
-        raise NotImplemented
-
-    def get_all(self, limit):
-        raise NotImplemented
+from abc import ABC, abstractmethod
+from typing import Optional
+from scheduler.domain.task import Task
+from scheduler.domain.task_status import Status
 
 
-class InMemoryTaskRepo(TaskRepository):
-    def __init__(self) -> None:
-        # Using dict for O(1) lookups by ID, but keeping set for uniqueness
-        self._memory = {}  # Changed to dict for efficient lookups
-        self._task_set = set()  # Keep set for uniqueness checks
+class TaskRepository(ABC):
+    """
+    Abstract interface for a collection of Tasks. Defines the contract
+    that all persistence implementations must adhere to.
+    """
 
-    def add(self, task):
-        """Add a single task to memory"""
-        if task.id in self._memory:
-            raise ValueError(f"Task with ID {task.id} already exists")
-        
-        self._memory[task.id] = task
-        self._task_set.add(task)
+    @abstractmethod
+    def add(self, task: Task) -> None:
+        """Adds a new task to the repository."""
+        raise NotImplementedError
 
-    def get(self, reference):
-        """Get task by ID (UUID) or by the task object itself"""
-        if isinstance(reference, UUID):
-            # Get by ID
-            return self._memory.get(reference)
-        elif hasattr(reference, 'id'):
-            # Get by task object (return same object if exists)
-            return self._memory.get(reference.id)
-        else:
-            # Try to find by other attributes (fallback)
-            for task in self._memory.values():
-                if task == reference:
-                    return task
-            return None
+    @abstractmethod
+    def get(self, reference) -> Optional[Task]:
+        """Retrieves a task by its unique ID."""
+        raise NotImplementedError
 
-    def update(self, task):
-        """Update an existing task"""
-        if task.id not in self._memory:
-            raise ValueError(f"Task with ID {task.id} not found")
-        
-        # Remove old version from set
-        old_task = self._memory[task.id]
-        self._task_set.discard(old_task)
-        
-        # Add updated version
-        self._memory[task.id] = task
-        self._task_set.add(task)
+    @abstractmethod
+    def update(self, task: Task) -> None:
+        """Updates an existing task."""
+        raise NotImplementedError
 
-    def get_due_tasks(self, limit):
-        """Get tasks that are due for execution, sorted by next_trigger"""
+    @abstractmethod
+    def remove(self, reference) -> None:
+        """Removes a task by its unique ID."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_due_tasks(self, limit: int) -> list[Task]:
+        """Retrieves tasks that are due to be processed."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_all(self, limit: int = 100, offset: int = 0) -> list[Task]:
+        """Retrieves all tasks, with pagination."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def count(self) -> int:
+        """Counts the total number of tasks."""
+        raise NotImplementedError
+
+class InMemoryTaskRepository(TaskRepository):
+    """
+    In-memory implementation of the TaskRepository. Ideal for fast unit tests.
+    """
+    def __init__(self):
+        # A simple dictionary is sufficient. The keys are already a unique set.
+        self._tasks: dict[UUID, Task] = {}
+
+    def add(self, task: Task):
+        if not task.id or task.id in self._tasks:
+            raise ValueError(f"Task with ID {task.id} is invalid or already exists.")
+        self._tasks[task.id] = task
+
+    def get(self, reference: UUID) -> Optional[Task]:
+        return self._tasks.get(reference)
+
+    def update(self, task: Task):
+        if not task.id or task.id not in self._tasks:
+            raise ValueError(f"Task with ID {task.id} not found for update.")
+        self._tasks[task.id] = task
+
+    def remove(self, reference: UUID) -> None:
+        if reference in self._tasks:
+            del self._tasks[reference]
+
+    def get_due_tasks(self, limit: int) -> list[Task]:
         now = datetime.now(timezone.utc)
         
-        # Filter for due tasks
         due_tasks = [
-            task for task in self._memory.values()
-            if (task.status == "scheduled" 
-                and task.next_trigger is not None 
-                and task.next_trigger <= now)
+            task for task in self._tasks.values()
+            if task.status == Status.SCHEDULED and task.next_trigger and task.next_trigger <= now
         ]
         
-        # Sort by next_trigger (earliest first)
+        # Sort by next_trigger (earliest first) to process in order
         due_tasks.sort(key=lambda t: t.next_trigger)
         
         return due_tasks[:limit]
 
-    def remove(self, reference):
-        """Remove task by ID (UUID) or by the task object itself"""
-        task_id = None
-        task_to_remove = None
-        
-        if isinstance(reference, UUID):
-            task_id = reference
-            task_to_remove = self._memory.get(reference)
-        elif hasattr(reference, 'id'):
-            task_id = reference.id
-            task_to_remove = reference
-        else:
-            # Try to find the task first
-            for task in self._memory.values():
-                if task == reference:
-                    task_id = task.id
-                    task_to_remove = task
-                    break
-        
-        if task_id is None or task_to_remove is None:
-            raise ValueError(f"Task {reference} not found")
-        
-        del self._memory[task_id]
-        self._task_set.discard(task_to_remove)
+    def get_all(self, limit: int = 100, offset: int = 0) -> list[Task]:
+        # Correctly implement limit and offset for pagination
+        all_tasks = list(self._tasks.values())
+        return all_tasks[offset : offset + limit]
 
-    def bulk_add(self, tasks):
-        """Add multiple tasks at once"""
-        for task in tasks:
-            if task.id in self._memory:
-                raise ValueError(f"Task with ID {task.id} already exists")
-        
-        for task in tasks:
-            self._memory[task.id] = task
-            self._task_set.add(task)
-
-    def get_all(self, limit) -> list:
-        """Get all tasks (useful for debugging/admin)"""
-        return list(self._memory.values())
-    
     def count(self) -> int:
-        """Get total number of tasks"""
-        return len(self._memory)
-    
-    def get_by_status(self, status: str) -> list:
-        """Get all tasks with a specific status"""
-        return [task for task in self._memory.values() if task.status == status]
+        return len(self._tasks)
     
     def clear(self):
-        """Clear all tasks (useful for testing)"""
-        self._memory.clear()
-        self._task_set.clear()
+        """Helper method for cleaning up between tests."""
+        self._tasks.clear()
 
 
-
-
-class DataBaseTaskRepo(TaskRepository):
-    def __init__(self, engine, table) -> None:
+class DatabaseTaskRepository(TaskRepository):
+    """
+    SQLAlchemy Core implementation of the TaskRepository.
+    This class is responsible for mapping domain objects to database rows.
+    """
+    def __init__(self, engine: Engine, tasks_table: Table):
         self._engine = engine
-        self._table = table
+        self._table = tasks_table
 
-    def add(self, task):
-        stmt = insert(self._table).values(
+    # --- Private Mapper ---
+    # This is the most important addition. This method translates a database row
+    # into a rich domain object. You will need to build the `Scheduler` object
+    # based on the stored data. This is a simplified example.
+    def _map_row_to_task(self, row) -> Task:
+        # NOTE: This mapping is highly dependent on your `Task` and `Scheduler` classes.
+        # You'll need to deserialize the `rrule` back into a `Recurring` schedule, etc.
+        # This is a placeholder for that logic.
+        from scheduler.domain.schedule import OneOff, Recurring # Local import to avoid circular dependency
+        
+        schedule_info = row.schedule_info or {}
+        if row.schedule_type == 'one_off':
+            schedule = OneOff(trigger_at=row.next_trigger)
+        elif row.schedule_type == 'recurring':
+            schedule = Recurring(
+                rrule=schedule_info.get('rrule'),
+                count=schedule_info.get('count', 0),
+                timezone=schedule_info.get('timezone', 'UTC')
+            )
+        else:
+            raise ValueError(f"Unknown schedule type '{row.schedule_type}' for task {row.id}")
 
-                )
-
-
-class TaskRepo:
-    def __init__(self, engine: Engine, table: Table):
-        self._engine = engine
-        self._table = table
+        return Task(
+            id=row.id,
+            callback_data=row.callback_data,
+            scheduler=schedule,
+            created_at=row.created_at,
+            status=Status(row.status), # Convert string from DB to Enum
+            retry_count=row.retry_count,
+            next_trigger=row.next_trigger,
+            last_trigger=row.last_trigger,
+            event_id=row.event_id,
+            event_timestamp=row.event_timestamp
+        )
 
     def add(self, task: Task):
         stmt = insert(self._table).values(
+            id=task.id,
+            callback_data=task.callback_data,
+            # NOTE: How you store the schedule is a key design decision.
+            # Storing type and a JSONB blob of details is flexible.
+            schedule_type=type(task.schedule).__name__.lower(), # 'oneoff' or 'recurring'
+            schedule_info={"rrule": task.schedule.rrule, "count": task.schedule.count} if hasattr(task.schedule, 'rrule') else {},
+            created_at=task.created_at,
+            status=task.status.value, # Store the string value of the Enum
+            retry_count=task.retry_count,
+            next_trigger=task.next_trigger,
+            last_trigger=task.last_trigger,
             event_id=task.event_id,
             event_timestamp=task.event_timestamp,
-            action=task.action,
-            start=task.start,
-            repeat_for=task.repeat_for,
-            repeated_for=task.repeated_for,
-            unlimited=task.unlimited,
-            period=task.period,
-            action_data=task.action_data,
-            next_run_time=task.next_run_time,
         )
         with self._engine.connect() as conn:
             conn.execute(stmt)
             conn.commit()
 
-    def get(self, task_id: str):
+    def get(self, task_id: UUID) -> Optional[Task]:
         stmt = select(self._table).where(self._table.c.id == task_id)
         with self._engine.connect() as conn:
-            rows = conn.execute(stmt)
-            return rows
+            row = conn.execute(stmt).first()
+            return self._map_row_to_task(row) if row else None
 
-    def update(self, task):
-        """Update an existing task using its ID"""
+    def update(self, task: Task):
         stmt = (
             update(self._table)
             .where(self._table.c.id == task.id)
             .values(
-                event_id=task.event_id,
-                event_timestamp=task.event_timestamp,
-                action=task.action,
-                start=task.start,
-                repeat_for=task.repeat_for,
-                repeated_for=task.repeated_for,
-                unlimited=task.unlimited,
-                period=task.period,
-                action_data=task.action_data,
-                next_run_time=task.next_run_time,
+                status=task.status.value,
+                retry_count=task.retry_count,
+                next_trigger=task.next_trigger,
+                last_trigger=task.last_trigger,
+                # You might not want to update all fields, only mutable ones.
+                # For example, callback_data and schedule might be immutable.
             )
         )
         with self._engine.connect() as conn:
             conn.execute(stmt)
             conn.commit()
 
-    def delete(self, task_id):
-        """Delete a task by its ID"""
+    def remove(self, task_id: UUID):
         stmt = delete(self._table).where(self._table.c.id == task_id)
         with self._engine.connect() as conn:
             conn.execute(stmt)
             conn.commit()
 
-    def bulk_add(self, tasks: list[Task]):
-        """Bulk insert multiple tasks in a single transaction"""
-        data = [
-            {
-                "event_id": t.event_id,
-                "event_timestamp": t.event_timestamp,
-                "action": t.action,
-                "start": t.start,
-                "repeat_for": t.repeat_for,
-                "repeated_for": t.repeated_for,
-                "unlimited": t.unlimited,
-                "period": t.period,
-                "action_data": t.action_data,
-                "next_run_time": t.next_run_time,
-            }
-            for t in tasks
-        ]
-
-        with self._engine.begin() as conn:
-            conn.execute(insert(self._table), data)
-
-    def bulk_get(self, task_ids: list[int]):
-        """Fetch multiple tasks by their IDs"""
-        stmt = select(self._table).where(self._table.c.id.in_(task_ids))
+    def get_due_tasks(self, limit: int) -> List[Task]:
+        stmt = (
+            select(self._table)
+            .where(self._table.c.status == Status.SCHEDULED.value)
+            .where(self._table.c.next_trigger <= text("CURRENT_TIMESTAMP")) # Use database's clock
+            .order_by(self._table.c.next_trigger.asc())
+            .limit(limit)
+        )
         with self._engine.connect() as conn:
-            result = conn.execute(stmt)
-            return [Task(**row._asdict()) for row in result]
+            rows = conn.execute(stmt).fetchall()
+            return [self._map_row_to_task(row) for row in rows]
 
-
+    def get_all(self, limit: int = 100, offset: int = 0) -> List[Task]:
+        stmt = select(self._table).limit(limit).offset(offset)
+        with self._engine.connect() as conn:
+            rows = conn.execute(stmt).fetchall()
+            return [self._map_row_to_task(row) for row in rows]
+    
+    def count(self) -> int:
+        stmt = select(func.count()).select_from(self._table)
+        with self._engine.connect() as conn:
+            return conn.execute(stmt).scalar_one()
 
 
 class RecurringPackagePollingRepo:
-    def __init__(self, engine, user_recurring_package_table, recurring_package_table) -> None:
+    def __init__(self, engine, user_recurring_package_table) -> None:
         self._engine = engine
-        self._user_recurring_package_table = user_recurring_package_table
-        self._recurring_package_table = recurring_package_table
-
+        self._table = user_recurring_package_table
 
     def get_tasks(self):
         stmt = select(self._table)
