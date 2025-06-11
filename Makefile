@@ -16,10 +16,13 @@ help:
 	@echo "	make allci                Run all CI steps (check, format, test)"
 
 consumer:
-	uv run src/consumer.py
+	uv run src/scripts/consumer.py
 
 producer:
-	uv run src/producer.py
+	uv run src/scripts/producer.py
+
+shell:
+	cd src; uv run python -m scripts.shell
 
 test:
 	@echo "not implemented"

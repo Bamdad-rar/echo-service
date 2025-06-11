@@ -20,7 +20,7 @@ class OneOff(Scheduler):
 @dataclass
 class Recurring(Scheduler):
     rrule: str
-    count: int
+    count: int | None = None
     timezone: str = "UTC"
 
     def next_after(self, t: datetime) -> datetime | None:
@@ -30,4 +30,11 @@ class Recurring(Scheduler):
     def __repr__(self) -> str:
         return f'recurring: {self.rrule} count={self.count} timezone={self.timezone}'
     
+@dataclass
+class Cron(Scheduler):
+    ...
+
+@dataclass
+class PersianRecurring(Scheduler):
+    ...
 

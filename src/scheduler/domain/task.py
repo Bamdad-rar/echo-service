@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 from uuid import UUID, uuid4
 from scheduler.domain.schedule import Scheduler
@@ -12,7 +12,7 @@ class Task:
     callback_data: dict # what
     scheduler: Scheduler # when
     # callback_dst: str # where
-    created_at: datetime
+    created_at: datetime = field(default=datetime.now().astimezone(timezone.utc))
     event_id: UUID | None = None # provided by other services
     event_timestamp: int | None = None # provided by other services
     status: Status = "new"
@@ -21,7 +21,7 @@ class Task:
     last_trigger: datetime | None = None
 
     def __post_init__(self):
-        if not isinstance(self.schedule, Scheduler):
+        if not isinstance(self.scheduler, Scheduler):
             raise ValueError("Invalid Schedule.")
         
     def __repr__(self) -> str:
@@ -38,6 +38,11 @@ class Task:
     def schedule(self):
         self.next_trigger = self.scheduler.next_after(datetime.now(timezone.utc))
         self.status = "finished" if self.next_trigger is None else "scheduled"
+
+    def delay(self, seconds: int):
+        if self.next_trigger is None:
+            raise ValueError("Cannot put delay on task with next_trigger time of None")
+        self.next_trigger += timedelta(seconds=seconds)
 
     def fail(self, error: str, max_retries: int = 3, backoff_sec: int = 60):
         self.retry_count += 1

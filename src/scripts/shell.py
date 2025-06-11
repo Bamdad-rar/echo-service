@@ -1,13 +1,5 @@
 import code
-
 import typer
-
-from configuration.databases import (
-    init_mongo,
-    disconnect_mongo,
-    init_redis,
-    disconnect_redis
-)
 
 try:
     from IPython import embed
@@ -18,16 +10,11 @@ except ImportError:
 
 cli = typer.Typer()
 
-
 @cli.command()
 def shell():
-
-    init_mongo()
-    init_redis()
-    typer.echo("MongoDB and Redis initialized.\n")
-
     # Prepare local context for the shell
     # You can import models, app, or anything else here:
+    from scheduler.domain.rrule_builder import RRuleBuilder
     from scheduler.domain.schedule import OneOff, Recurring
     from scheduler.domain.task import Task
     # ... etc.
@@ -36,8 +23,11 @@ def shell():
         "Task": Task,
         "OneOff": OneOff,
         "Recurring": Recurring,
-        # etc...
+        "RRuleBuilder": RRuleBuilder,
+        # # etc...
     }
+
+    typer.echo("\nStartup complete.\n")
 
     banner = (
         r"""
@@ -60,9 +50,7 @@ def shell():
             typer.echo("IPython not installed; falling back to basic Python shell...\n")
             code.interact(banner, local=local_context)
     finally:
-        typer.echo("\nClosing MongoDB and Redis connections.")
-        disconnect_mongo()
-        disconnect_redis()
+        typer.echo("\nCleaning things up...")
         typer.echo("\nBye!")
 
 
