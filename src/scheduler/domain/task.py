@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 from scheduler.domain.schedule import Scheduler
+from scheduler.domain.task_status import TaskStatus
 from datetime import datetime, timedelta, timezone
 
 Status = Literal['new','scheduled', 'paused', 'cancelled', 'finished', 'failed']
@@ -13,7 +14,7 @@ class Task:
     scheduler: Scheduler # when
     # callback_url: str # where
     created_at: datetime
-    status: Status = "new"
+    status: TaskStatus = "new"
     retry_count: int = 0
     next_trigger: datetime | None = None
     last_trigger: datetime | None = None
