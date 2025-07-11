@@ -1,0 +1,33 @@
+[project]
+name = "Scheduler-Service"
+version = "0.1.0"
+description = "An event driven scheduler service with a single responsibility on scheduling."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aio-pika>=9.5.5",
+    "asyncpg>=0.30.0",
+    "httpx>=0.28.1",
+    "mkdocstrings>=0.29.1",
+    "pika>=1.3.2",
+    "prometheus-client>=0.22.1",
+    "psycopg[binary]>=3.2.9",
+    "pydantic>=2.11.4",
+    "pydantic-settings>=2.9.1",
+    "pytest>=8.3.5",
+    "python-dateutil>=2.9.0.post0",
+    "ruff>=0.11.11",
+    "sqlalchemy>=2.0.41",
+]
+[tool.pytest.ini_options]
+pythonpath=["src"]
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
