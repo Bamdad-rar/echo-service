@@ -20,5 +20,4 @@ RUN uv sync --frozen
 ENV PATH="/chronos/.venv/bin:$PATH"
 
 COPY . /chronos
-
-RUN mkdir -p /var/log/chronos
+ENV PYTHONPATH=/chronos/src
